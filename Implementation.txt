@@ -1,0 +1,5 @@
+The first thing I did to begin my project was to open the files and get a general
+overview with what I am working with. I read up on what I needed to know for this project
+including inodes, superblocks, directories, and how files are stored and accesssed. 
+
+The next thing I did was to create a struct for the superblock and inode. 
