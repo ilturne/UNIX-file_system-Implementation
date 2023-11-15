@@ -25,7 +25,6 @@ struct superblock {
 struct inode {
 	Inodetype type; //This is the type of the inode
 	unsigned int size; //Size of the file in bytes
-	unsigned int type; //Type of the file (0 = file, 1 = directory)
 	int direct_blocks[MAX_DIRECT_BLOCKS]; //This is the array of direct blocks
 };
 
