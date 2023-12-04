@@ -74,11 +74,12 @@ int main(int argc, char** argv){
       newfs = 1;
     }
     
-    if (newfs)
+    if (newfs) {
       if (lseek(fd, FSSIZE-1, SEEK_SET) == -1){
 	perror("seek failed");
 	exit(EXIT_FAILURE);
       }
+    }
       else{
 	if(write(fd, "\0", 1) == -1){
 	  perror("write failed");
@@ -116,7 +117,6 @@ int main(int argc, char** argv){
   
   return 0;
 }
-
 
 int zerosize(int fd){
   struct stat stats;

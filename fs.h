@@ -55,5 +55,9 @@ void lsfs();
 void addfilefs(char* fname);
 void removefilefs(char* fname);
 void extractfilefs(char* fname);
+//USER ADDED FUNCTIONS
+void parse_path(const char* path, char components[256][MAX_FILENAME_LENGTH + 1], int* num_components, char* filename);
+int find_free_inode();
+int find_free_block();
 
 #endif
