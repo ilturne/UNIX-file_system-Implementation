@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -43,6 +44,7 @@ int main(int argc, char** argv){
       break;
     case 'a':
       add = 1;
+
       toadd = strdup(optarg);
       break;
     case 'r':
