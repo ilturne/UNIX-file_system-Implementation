@@ -64,8 +64,10 @@ int main(int argc, char** argv){
   if (!filefsname){
     exitusage(argv[0]);
   }
-
-  if ((fd = open(fsname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)) == -1){
+  
+  fd = open(fsname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+  
+  if (fd == -1){
     perror("open failed");
     exit(EXIT_FAILURE);
   }

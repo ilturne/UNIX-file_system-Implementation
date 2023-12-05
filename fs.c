@@ -4,26 +4,38 @@
 struct superblock* sb = NULL; //Initiate the superblock once
 struct inode* inodes = NULL; //Initiate the root inode once
 struct inode* root = NULL; //Initiate the root inode once
-unsigned char* fs = NULL;
+unsigned char* fs;
+
+int is_mapped = 0;
 
 void mapfs(int fd){
   if ((fs = mmap(NULL, FSSIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == NULL){
       perror("mmap failed");
       exit(EXIT_FAILURE);
   }
+  else {
+    is_mapped = 1;
+  }
 }
 
 
 void unmapfs(){
   munmap(fs, FSSIZE);
+  is_mapped = 0;
 }
 
 void formatfs() {
+    // Verify that the file system is memory-mapped
+    if (!is_mapped) {
+        fprintf(stderr, "File system is not memory-mapped. Call mapfs first.\n");
+        exit(EXIT_FAILURE);
+    }
+
     // Initialize the superblock
     sb = (struct superblock*)fs;
-    sb->magic = 0xdeadbeef;
-    sb->nblocks = 10000000 / 512; // Total file system size divided by block size
-    sb->ninodes = 100;            // Number of inodes
+    //sb->magic = 0xdeadbeef;
+    sb->nblocks = FSSIZE / BLOCK_SIZE; // Total file system size divided by block size
+    sb->ninodes = 100;// Number of inodes
 
     // Calculate the bitmap size and initialize the free block list
     int bitmap_size = sb->nblocks / 8;
@@ -40,15 +52,18 @@ void formatfs() {
     }
 
     // Set up the root inode
-    root = &inodes[1];
+    root = &inodes[0];
     root->type = INODE_DIRECTORY;
 }
 
-
-
 void loadfs() {
+    // Verify that the file system is memory-mapped
+    if (!is_mapped) {
+        fprintf(stderr, "File system is not memory-mapped. Call mapfs first.\n");
+        exit(EXIT_FAILURE);
+    }
     // Verify the superblock's magic number to ensure file system is formatted
-    if (sb == NULL || sb->magic != 0xdeadbeef) {
+    if (sb == NULL) {
         fprintf(stderr, "File system is not formatted correctly.\n");
         exit(EXIT_FAILURE);
     }
@@ -59,7 +74,7 @@ void loadfs() {
     inodes = (struct inode*)(fs + sizeof(struct superblock) + bitmap_size);
 
     // Re-establish the root inode pointer
-    root = &inodes[1]; // Assuming the first inode is the root
+    root = &inodes[0]; // Assuming the first inode is the root
 }
 
 
