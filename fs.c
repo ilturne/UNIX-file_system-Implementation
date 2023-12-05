@@ -1,11 +1,10 @@
 #include "fs.h"
 #include <string.h>
 
+unsigned char* fs;
 struct superblock* sb = NULL; //Initiate the superblock once
 struct inode* inodes = NULL; //Initiate the root inode once
 struct inode* root = NULL; //Initiate the root inode once
-unsigned char* fs;
-
 int is_mapped = 0;
 
 void mapfs(int fd){
@@ -24,24 +23,24 @@ void unmapfs(){
   is_mapped = 0;
 }
 
-void formatfs() {
-    // Verify that the file system is memory-mapped
-    if (!is_mapped) {
+
+void formatfs(){
+   if (!is_mapped) {
         fprintf(stderr, "File system is not memory-mapped. Call mapfs first.\n");
         exit(EXIT_FAILURE);
-    }
+   }
 
-    // Initialize the superblock
-    sb = (struct superblock*)fs;
-    //sb->magic = 0xdeadbeef;
-    sb->nblocks = FSSIZE / BLOCK_SIZE; // Total file system size divided by block size
-    sb->ninodes = 100;// Number of inodes
+   // Initialize the superblock
+   sb = (struct superblock*)fs;
+   sb->nblocks = FSSIZE / BLOCK_SIZE; // Total file system size divided by block size 
+   sb->ninodes = 100;// Number of inodes
+   sb->magic = 0xdeadbeef;
 
-    // Calculate the bitmap size and initialize the free block list
-    int bitmap_size = sb->nblocks / 8;
-	if (sb->nblocks % 8 != 0) bitmap_size++;
-    unsigned char* free_block_list = fs + sizeof(struct superblock);
-    memset(free_block_list, 0, bitmap_size); // Set all blocks to free
+   // Calculate the bitmap size and initialize the free block list
+   int bitmap_size = sb->nblocks / 8;
+   if (sb->nblocks % 8 != 0) bitmap_size++;
+   unsigned char* free_block_list = fs + sizeof(struct superblock);
+   memset(free_block_list, 0, bitmap_size); // Set all blocks to free
 
     // Initialize the inode table
     inodes = (struct inode*)(fs + sizeof(struct superblock) + bitmap_size);
@@ -56,244 +55,324 @@ void formatfs() {
     root->type = INODE_DIRECTORY;
 }
 
+
 void loadfs() {
-    // Verify that the file system is memory-mapped
-    if (!is_mapped) {
-        fprintf(stderr, "File system is not memory-mapped. Call mapfs first.\n");
-        exit(EXIT_FAILURE);
-    }
-    // Verify the superblock's magic number to ensure file system is formatted
-    if (sb == NULL) {
-        fprintf(stderr, "File system is not formatted correctly.\n");
-        exit(EXIT_FAILURE);
-    }
+  sb = (struct superblock*)fs;
+  if (!is_mapped) {
+    fprintf(stderr, "File system is not memory-mapped. Call mapfs first.\n");
+    exit(EXIT_FAILURE);
+  }
 
-    // The inode table should already be initialized, but you can re-establish the pointer if needed
-    int bitmap_size = sb->nblocks / 8;
-    if (sb->nblocks % 8 != 0) bitmap_size++;
-    inodes = (struct inode*)(fs + sizeof(struct superblock) + bitmap_size);
+  // Correct the order of checks here
+  if (sb == NULL) {
+    fprintf(stderr, "Superblock not found. Call formatfs first.\n");
+    exit(EXIT_FAILURE);
+  }
 
-    // Re-establish the root inode pointer
-    root = &inodes[0]; // Assuming the first inode is the root
+  if (sb->magic != 0xdeadbeef) {
+    fprintf(stderr, "Magic number not found. Call formatfs first.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  // Initialize the inode table
+  inodes = (struct inode*)(fs + sizeof(struct superblock) + sb->nblocks / 8);
+  root = &inodes[0]; // Set up the root inode
 }
 
 
-void lsfs() {
-    if (root == NULL || root->type != INODE_DIRECTORY) {
+
+void lsfs(){
+
+  if (root == NULL || root->type != INODE_DIRECTORY) {
         printf("Root directory not found or is not a directory.\n");
         return;
     }
 
-    // A stack to keep track of directories to be listed
-    struct inode* stack[MAX_DIRECT_BLOCKS * sb->ninodes];
-    int depth_stack[MAX_DIRECT_BLOCKS * sb->ninodes]; // To keep track of depth
-    int stack_ptr = 0;
-
-    // Push the root directory onto the stack
-    stack[stack_ptr] = root;
-    depth_stack[stack_ptr] = 0;
-    stack_ptr++;
-
-    if (root->type != INODE_DIRECTORY) {
-        fprintf(stderr, "Root inode is not set correctly.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    while (stack_ptr > 0) {
-        // Pop a directory from the stack
-        stack_ptr--;
-        struct inode* current_inode = stack[stack_ptr];
-        int current_depth = depth_stack[stack_ptr];
-
-        for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
-            if (current_inode->direct_blocks[i] == -1) {
-                break; // No more data blocks in this directory
-            }
-
-            dir_entry* entries = (dir_entry*)(fs + current_inode->direct_blocks[i] * BLOCK_SIZE);
-            for (int j = 0; j < ENTRIES_PER_BLOCK; j++) {
-                if (strlen(entries[j].name) == 0) {
-                    break; // No more entries in this block
-                }
-
-                // Print the directory entry with indentation
-                for (int k = 0; k < current_depth; k++) {
-                    printf("\t");
-                }
-                printf("%s\n", entries[j].name);
-
-                // If it's a directory, push it onto the stack
-                if (entries[j].inode_num != -1 && inodes[entries[j].inode_num].type == INODE_DIRECTORY) {
-                    stack[stack_ptr] = &inodes[entries[j].inode_num];
-                    depth_stack[stack_ptr] = current_depth + 1;
-                    stack_ptr++;
-                }
-            }
+    // Iterate through the root directory's direct blocks
+    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
+        if (root->direct_blocks[i] == -1) break; // No more entries in this block
+        dir_entry* entries = (dir_entry*)(fs + root->direct_blocks[i] * BLOCK_SIZE);
+        for (int j = 0; j < ENTRIES_PER_BLOCK; j++) {
+            if (entries[j].inode_num == -1) break; // No more entries in this block
+            printf("%s\n", entries[j].name);
         }
     }
 }
-
 
 void addfilefs(char* fname){
-    // // Step 1: Parse the path
-    // char components[256][MAX_FILENAME_LENGTH + 1];
-    // char filename[MAX_FILENAME_LENGTH + 1];
-    // int num_components;
+    sb = (struct superblock*)fs;
+    char components[256][MAX_FILENAME_LENGTH + 1];
+    char filename[MAX_FILENAME_LENGTH + 1];
+    int num_components;
 
-    // parse_path(fname, components, &num_components, filename);
-    // // Step 2: Ensure directories exist (to be implemented)
-    // struct inode* current_dir = root;
-    // for (int i = 0; i < num_components; i++) {
-    //     struct inode* next_dir = find_directory(current_dir, components[i]);
-    //     if (next_dir == NULL) {
-    //         // Directory doesn't exist, create it
-    //         next_dir = create_directory(current_dir, components[i]);
-    //         if (next_dir == NULL) {
-    //             printf("Failed to create directory %s\n", components[i]);
-    //             return;
-    //         }
-    //     }
-    //     current_dir = next_dir;
-    // }
+    // Parse the path
+    parse_path(fname, components, &num_components, filename);
 
-    // // Step 3: Find a free inode for the file
-    // int file_inode_index = find_free_inode();
-    // if (file_inode_index < 0) {
-    //     printf("No free inodes available.\n");
-    //     return;
-    // }
+    if (num_components == 0) {
+        printf("Invalid path.\n");
+        return;
+    }
 
-    // // Step 4: Write the file data
-    // struct inode* file_inode = &inodes[file_inode_index];
-    // file_inode->type = INODE_FILE;
-    // // Logic to write file data and update file_inode's direct block references
-
-    // // Step 5: Update the parent directory's inode with the new file entry
-    // // (Assuming you have a function to update a directory's contents)
-}
-
-
-void removefilefs(char* fname){
-    
-}
-
-
-void extractfilefs(char* fname){
-
-}
-
-//USER ADDED FUNCTIONS
-
-void parse_path(const char* path, char components[256][MAX_FILENAME_LENGTH + 1], int* num_components, char* filename) {
-    char* path_copy = strdup(path); // Duplicate the path to avoid modifying the original
-    char* token;
-    char* rest = path_copy;
-
-    *num_components = 0;
-    while ((token = strtok_r(rest, "/", &rest))) {
-        if (*num_components < 256 - 1) {
-            strncpy(components[*num_components], token, MAX_FILENAME_LENGTH);
-            components[*num_components][MAX_FILENAME_LENGTH] = '\0'; // Null-terminate
-            (*num_components)++;
+    // Find the parent directory
+    struct inode* parent = root;
+    for (int i = 0; i < num_components - 1; i++) {
+        int found = 0;
+        for (int j = 0; j < MAX_DIRECT_BLOCKS && parent->direct_blocks[j] != -1; j++) {
+            // Ensure the block number is valid
+            if (parent->direct_blocks[j] < 0 || parent->direct_blocks[j] >= sb->nblocks) {
+                continue;
+            }
+            dir_entry* entries = (dir_entry*)(fs + parent->direct_blocks[j] * BLOCK_SIZE);
+            for (int k = 0; k < ENTRIES_PER_BLOCK; k++) {
+                if (strcmp(entries[k].name, components[i]) == 0 && entries[k].inode_num != -1) {
+                    parent = &inodes[entries[k].inode_num];
+                    found = 1;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+        if (!found) {
+            printf("Directory %s not found.\n", components[i]);
+            return;
         }
     }
 
-    if (*num_components > 0) {
-        strncpy(filename, components[*num_components - 1], MAX_FILENAME_LENGTH);
-        filename[MAX_FILENAME_LENGTH] = '\0';
-        (*num_components)--; // Last component is the filename, not a directory
-    }
-
-    free(path_copy);
-}
-
-struct inode* find_directory(struct inode* parent, char* dir_name) {
-    if (parent == NULL || parent->type != INODE_DIRECTORY) {
-        return NULL;
-    }
-
-    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
-        if (parent->direct_blocks[i] == -1) {
-            break; // No more data blocks in this directory
+    // Check if file already exists in the parent directory
+    int fileExists = 0;
+    for (int i = 0; i < MAX_DIRECT_BLOCKS && parent->direct_blocks[i] != -1; i++) {
+        // Ensure the block number is valid
+        if (parent->direct_blocks[i] < 0 || parent->direct_blocks[i] >= sb->nblocks) {
+            continue;
         }
-
         dir_entry* entries = (dir_entry*)(fs + parent->direct_blocks[i] * BLOCK_SIZE);
         for (int j = 0; j < ENTRIES_PER_BLOCK; j++) {
-            if (strlen(entries[j].name) == 0) {
-                break; // No more entries in this block
-            }
-
-            if (strcmp(entries[j].name, dir_name) == 0) {
-                return &inodes[entries[j].inode_num];
+            if (strcmp(entries[j].name, filename) == 0 && entries[j].inode_num != -1) {
+                printf("File already exists.\n");
+                return;
             }
         }
     }
 
-    return NULL;
+    if (fileExists) {
+        return;
+    }
+
+    // Find a free inode for the file
+    int inode_index = find_free_inode();
+    if (inode_index == -1) {
+        printf("No free inodes available.\n");
+        return;
+    }
+
+    struct inode* file_inode = &inodes[inode_index];
+
+    // Initialize the inode for the file
+    file_inode->type = INODE_FILE;
+    file_inode->size = 0;
+    memset(file_inode->direct_blocks, -1, sizeof(file_inode->direct_blocks));
+
+    // Add the file to the parent directory
+    int added = 0;
+    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
+        if (parent->direct_blocks[i] == -1 || parent->direct_blocks[i] >= sb->nblocks) {
+            int new_block = find_free_block();
+            if (new_block == -1) {
+                printf("No free blocks available.\n");
+                return;
+            }
+            parent->direct_blocks[i] = new_block;
+            memset(fs + new_block * BLOCK_SIZE, 0, BLOCK_SIZE); // Initialize the new block
+        }
+        dir_entry* entries = (dir_entry*)(fs + parent->direct_blocks[i] * BLOCK_SIZE);
+        for (int j = 0; j < ENTRIES_PER_BLOCK; j++) {
+            if (entries[j].inode_num == -1) {
+                strncpy(entries[j].name, filename, MAX_FILENAME_LENGTH);
+                entries[j].name[MAX_FILENAME_LENGTH] = '\0'; // Null terminate the string
+                entries[j].inode_num = inode_index;
+                added = 1;
+                break;
+            }
+        }
+        if (added) break;
+    }
+
+    if (!added) {
+        printf("Failed to add file to directory.\n");
+    }
 }
 
-struct inode* create_directory(const struct inode* parent, const char* dir_name) {
-    if (parent == NULL || parent->type != INODE_DIRECTORY) {
-        return NULL;
+
+void removefilefs(char* fname) {
+    char components[256][MAX_FILENAME_LENGTH + 1];
+    char filename[MAX_FILENAME_LENGTH + 1];
+    int num_components;
+
+    // Parse the path
+    parse_path(fname, components, &num_components, filename);
+
+    if (num_components == 0) {
+        printf("Invalid path.\n");
+        return;
     }
 
-    // Find a free inode for the directory
-    int dir_inode_index = find_free_inode();
-    if (dir_inode_index < 0) {
-        return NULL;
+    // Find the parent directory
+    struct inode* parent = root;
+    for (int i = 0; i < num_components - 1; i++) {
+        int found = 0;
+        for (int j = 0; j < MAX_DIRECT_BLOCKS && parent->direct_blocks[j] != -1; j++) {
+            if (parent->direct_blocks[j] < 0 || parent->direct_blocks[j] >= sb->nblocks) {
+                continue; // Skip invalid block numbers
+            }
+            dir_entry* entries = (dir_entry*)(fs + parent->direct_blocks[j] * BLOCK_SIZE);
+            for (int k = 0; k < ENTRIES_PER_BLOCK; k++) {
+                if (entries[k].inode_num != -1 && strcmp(entries[k].name, components[i]) == 0) {
+                    parent = &inodes[entries[k].inode_num];
+                    found = 1;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+        if (!found) {
+            printf("Directory %s not found.\n", components[i]);
+            return;
+        }
     }
 
-    // Find a free block for the directory's data
-    int dir_block_index = find_free_block();
-    if (dir_block_index < 0) {
-        return NULL;
+    // Find and remove the file entry from the parent directory
+    int removed = 0;
+    for (int i = 0; i < MAX_DIRECT_BLOCKS && parent->direct_blocks[i] != -1; i++) {
+        if (parent->direct_blocks[i] < 0 || parent->direct_blocks[i] >= sb->nblocks) {
+            continue; // Skip invalid block numbers
+        }
+        dir_entry* entries = (dir_entry*)(fs + parent->direct_blocks[i] * BLOCK_SIZE);
+        for (int j = 0; j < ENTRIES_PER_BLOCK; j++) {
+            if (entries[j].inode_num != -1 && strcmp(entries[j].name, filename) == 0) {
+                // Invalidate the directory entry
+                entries[j].inode_num = -1;
+                memset(entries[j].name, 0, MAX_FILENAME_LENGTH);
+                removed = 1;
+                break;
+            }
+        }
+        if (removed) break;
     }
 
-    // Update the parent directory's inode with the new directory entry
-    // (Assuming you have a function to update a directory's contents)
+    if (!removed) {
+        printf("File %s not found.\n", fname);
+    }
+}
 
-    // Update the new directory's inode
-    struct inode* dir_inode = &inodes[dir_inode_index];
-    dir_inode->type = INODE_DIRECTORY;
-    dir_inode->size = 0;
-    dir_inode->direct_blocks[0] = dir_block_index;
+void extractfilefs(char* fname) {
+    char components[256][MAX_FILENAME_LENGTH + 1];
+    char filename[MAX_FILENAME_LENGTH + 1];
+    int num_components;
 
-    // Update the new directory's data block
-    dir_entry* entries = (dir_entry*)(fs + dir_block_index * BLOCK_SIZE);
-    memset(entries, 0, BLOCK_SIZE); // Clear the block
-    strncpy(entries[0].name, ".", MAX_FILENAME_LENGTH);
-    entries[0].name[MAX_FILENAME_LENGTH] = '\0';
-    entries[0].inode_num = dir_inode_index;
-    strncpy(entries[1].name, "..", MAX_FILENAME_LENGTH);
-    entries[1].name[MAX_FILENAME_LENGTH] = '\0';
-    entries[1].inode_num = parent - inodes;
+    // Parse the path
+    parse_path(fname, components, &num_components, filename);
 
-    return dir_inode;
+    if (num_components == 0) {
+        printf("Invalid path.\n");
+        return;
+    }
+
+    // Traverse the path to find the file inode
+    struct inode* current = root;
+    for (int i = 0; i < num_components; i++) {
+        int found = 0;
+        for (int j = 0; j < MAX_DIRECT_BLOCKS && current->direct_blocks[j] != -1; j++) {
+            dir_entry* entries = (dir_entry*)(fs + current->direct_blocks[j] * BLOCK_SIZE);
+            for (int k = 0; k < ENTRIES_PER_BLOCK; k++) {
+                if (entries[k].inode_num != -1 && strcmp(entries[k].name, components[i]) == 0) {
+                    current = &inodes[entries[k].inode_num];
+                    found = 1;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+        if (!found) {
+            printf("File or directory %s not found.\n", components[i]);
+            return;
+        }
+    }
+
+    // Check if the inode is a file
+    if (current->type != INODE_FILE) {
+        printf("The path does not lead to a file.\n");
+        return;
+    }
+
+    // Read file content from file system and write to stdout
+    for (int i = 0; i < MAX_DIRECT_BLOCKS && current->direct_blocks[i] != -1; i++) {
+        fwrite(fs + current->direct_blocks[i] * BLOCK_SIZE, BLOCK_SIZE, 1, stdout);
+    }
+}
+
+
+//USER ADDED FUNCTIONS
+void parse_path(const char* path, char components[256][MAX_FILENAME_LENGTH + 1], int* num_components, char* filename) {
+    // Check for an empty or too long path
+    size_t path_length = strlen(path);
+    if (path_length == 0 || path_length > MAX_FILENAME_LENGTH) {
+        *num_components = 0;
+        filename[0] = '\0';
+        return;
+    }
+
+    // Initialize the components array
+    for (int i = 0; i < 256; i++) {
+        memset(components[i], 0, MAX_FILENAME_LENGTH + 1);
+    }
+
+    // Initialize the filename
+    memset(filename, 0, MAX_FILENAME_LENGTH + 1);
+
+    // Copy the path into a temporary buffer
+    char path_copy[MAX_FILENAME_LENGTH + 1];
+    strncpy(path_copy, path, MAX_FILENAME_LENGTH);
+    path_copy[MAX_FILENAME_LENGTH] = '\0'; // Ensure null termination
+
+    // Tokenize the path
+    char* token = strtok(path_copy, "/");
+    int i = 0;
+    while (token != NULL && i < 256) {
+        strncpy(components[i], token, MAX_FILENAME_LENGTH);
+        components[i][MAX_FILENAME_LENGTH] = '\0'; // Ensure null termination
+        token = strtok(NULL, "/");
+        i++;
+    }
+
+    // Set the number of components
+    *num_components = i;
+
+    // Copy the last component into the filename, if available
+    if (i > 0) {
+        strncpy(filename, components[i - 1], MAX_FILENAME_LENGTH);
+    }
 }
 
 int find_free_inode() {
     for (int i = 0; i < sb->ninodes; i++) {
-        if (inodes[i].type == UNUSED) {
+        if (inodes[i].type == 255) {
             return i;
         }
     }
-
     return -1;
 }
 
+
 int find_free_block() {
+    unsigned char* free_block_list = fs + sizeof(struct superblock);
     int bitmap_size = sb->nblocks / 8;
     if (sb->nblocks % 8 != 0) bitmap_size++;
-    unsigned char* free_block_list = fs + sizeof(struct superblock);
     for (int i = 0; i < bitmap_size; i++) {
-        if (free_block_list[i] != 0xFF) {
-            for (int j = 0; j < 8; j++) {
-                if ((free_block_list[i] & (1 << j)) == 0) {
-                    return i * 8 + j;
-                }
+        for (int j = 0; j < 8; j++) {
+            if ((free_block_list[i] & (1 << j)) == 0) {
+                return i * 8 + j;
             }
         }
     }
-
     return -1;
 }

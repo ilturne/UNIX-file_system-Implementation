@@ -1,5 +1,44 @@
-The first thing I did to begin my project was to open the files and get a general
-overview with what I am working with. I read up on what I needed to know for this project
-including inodes, superblocks, directories, and how files are stored and accesssed. 
+THIS PROJECT WAS MADE BY ILYA TURNER AND ILYA TURNER ONLY. ANY OTHER USE OF THIS CODE IS NOT ALLOWED.
 
-The next thing I did was to create a struct for the superblock and inode. 
+Project Overview and Preparation
+The project involved implementing a basic filesystem inspired by Unix filesystems. 
+Key concepts included inodes, superblocks, directories, and file storage and retrieval mechanisms. 
+To start, I familiarized myself with these concepts, understanding their roles and how they interact within a filesystem.
+
+Struct Definitions
+Superblock Struct: The superblock struct, struct superblock, is a crucial part of the filesystem that holds metadata about the filesystem itself. 
+It includes details like the total number of blocks, the number of inodes, and a magic number for filesystem identification.
+
+Inode Struct: The inode struct, struct inode, represents individual files and directories within the filesystem. 
+Each inode contains information such as the type of the inode (file or directory), the size of the file, and references (pointers) to the data blocks that store the file's contents.
+
+Function Implementations
+Mapping the Filesystem: Implemented functions mapfs and unmapfs to map the filesystem into memory using mmap and unmap it using munmap, respectively. 
+This approach allows for easier access to the filesystem data.
+
+Formatting the Filesystem (formatfs): This function initializes a new filesystem. 
+It sets up the superblock and creates an empty inode table. All inodes are marked as unused, and data blocks are initialized as free.
+
+Loading the Filesystem (loadfs): This function loads an existing filesystem. It checks the validity of the superblock (especially the magic number) to ensure that the filesystem is correctly formatted. 
+It then initializes pointers to the superblock and the inode table.
+
+Listing Files (lsfs): This function lists the contents of the filesystem, specifically the root directory. 
+It iterates over the entries in the root directory's inode and prints out the names of the files and directories contained within.
+
+Adding Files (addfilefs): This function adds a new file to the filesystem. 
+It involves parsing the specified path, creating necessary directories, finding a free inode for the new file, writing file data to the filesystem, and updating the parent directory's inode with the new file entry.
+
+Removing Files (removefilefs): Though not fully implemented, this function would handle the deletion of files from the filesystem, including removing the file's entry from its parent directory and freeing up its inode and data blocks.
+
+Extracting Files (extractfilefs): Intended to extract files from the filesystem, this function would read the file data from the filesystem and write it to an external file, although it is not fully implemented.
+
+Additional Functions and Utilities
+Path Parsing: Implemented a function parse_path to break down file paths into individual components, helping in navigating through the filesystem's directory structure.
+
+Finding Free Inodes and Blocks: Functions like find_free_inode and find_free_block are used to locate unused inodes and free data blocks, which are essential for file creation and storage.
+
+User Interface and Interaction
+The filesystem is interacted with through a command-line interface, supporting operations like listing contents, adding files, and removing files. Users can specify the operation and the filesystem file via command-line arguments.
+
+Error Handling and Resource Management
+Throughout the implementation, careful attention is given to error handling, ensuring that operations like file opening, memory mapping, and writing are performed successfully. Additionally, resources like dynamically allocated memory and file descriptors are managed properly to prevent leaks and ensure clean program termination.

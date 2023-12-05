@@ -1,7 +1,6 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <getopt.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -44,8 +43,7 @@ int main(int argc, char** argv){
       break;
     case 'a':
       add = 1;
-
-      toadd = strdup(optarg);
+      toadd = strdup(optarg); //IDK why there is an error here...Either way it still copmiles and runs
       break;
     case 'r':
       remove = 1;
@@ -64,10 +62,8 @@ int main(int argc, char** argv){
   if (!filefsname){
     exitusage(argv[0]);
   }
-  
-  fd = open(fsname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-  
-  if (fd == -1){
+
+  if ((fd = open(fsname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)) == -1){
     perror("open failed");
     exit(EXIT_FAILURE);
   }
@@ -76,12 +72,11 @@ int main(int argc, char** argv){
       newfs = 1;
     }
     
-    if (newfs) {
+    if (newfs)
       if (lseek(fd, FSSIZE-1, SEEK_SET) == -1){
 	perror("seek failed");
 	exit(EXIT_FAILURE);
       }
-    }
       else{
 	if(write(fd, "\0", 1) == -1){
 	  perror("write failed");
@@ -119,6 +114,7 @@ int main(int argc, char** argv){
   
   return 0;
 }
+
 
 int zerosize(int fd){
   struct stat stats;
